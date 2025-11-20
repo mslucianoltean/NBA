@@ -27,7 +27,7 @@ def load_data(input_file):
     return df
 
 class AnalyticsEngine:
-    """ Logică de Analiză bazată pe codul existent, adaptată pentru Streamlit. """
+    """ Logica de Analiză bazată pe codul existent. """
     def __init__(self, df, spread_buffer=3.5, total_buffer=6.0):
         self.df = df
         self.spread_buffer = spread_buffer
@@ -44,7 +44,6 @@ class AnalyticsEngine:
             return {'home': teams[0], 'away': teams[1] if len(teams) > 1 else "Unknown"}
     
     def _get_metrics(self, market_type, selection):
-        # ... [Păstrează funcția get_metrics din codul anterior aici] ...
         if market_type == 'Total':
             subset = self.df[(self.df['market_type'] == 'Total') & (self.df['side'] == selection)]
         else:
@@ -76,7 +75,6 @@ class AnalyticsEngine:
         }
 
     def _calculate_score(self, market_type, m, selection):
-        # ... [Păstrează funcția calculate_score din codul anterior aici] ...
         score = 5 
         
         if m['money_flow'] > 0.5: score += 2
@@ -99,7 +97,6 @@ class AnalyticsEngine:
 
     def analyze_all(self):
         signals = []
-        # Logica pentru Spread, Total, Moneyline (Păstrează structura din codul anterior)
         
         # SPREAD
         for side, team in self.teams.items():
@@ -150,12 +147,10 @@ def create_analysis_chart(df, market_type, team=None):
     Generează graficul interactiv Plotly.
     Vizualizează mișcarea liniei vs. money flow în timp.
     """
-    # 1. Filtrare date pentru piața specifică
     if market_type in ['Spread', 'Moneyline']:
         filtered_df = df[(df['market_type'] == market_type) & (df['team'] == team)].copy()
         y_axis_label = f"Linie {market_type} (puncte)" if market_type == 'Spread' else "Cota Decimală"
         
-        # Pentru Moneyline, folosim odds-urile ca valoare Y (linia e 0)
         if market_type == 'Moneyline':
             filtered_df['plot_value'] = filtered_df['decimal_odds']
         else:
@@ -172,28 +167,32 @@ def create_analysis_chart(df, market_type, team=None):
     if filtered_df.empty:
         return None
 
-    # 2. Calcul Money Flow (folosim diferența procentuală de probabilitate față de opener)
+    # 1. Calcul Money Flow (Delta Probabilitate)
     opener_odds = filtered_df.iloc[0]['decimal_odds']
     opener_prob = 1 / opener_odds if opener_odds else 0
     filtered_df['probability'] = 1 / filtered_df['decimal_odds']
     filtered_df['flow_delta'] = (filtered_df['probability'] - opener_prob) * 100
+    
+    # 2. FIXUL CRITIC: Folosim valoarea absolută pentru dimensiunea punctului
+    # Marimea trebuie sa fie intotdeauna pozitiva.
+    filtered_df['flow_magnitude'] = filtered_df['flow_delta'].abs() 
     
     # 3. Creare Grafic Plotly
     fig = px.scatter(
         filtered_df,
         x='timestamp',
         y='plot_value',
-        size='flow_delta', # Mărimea punctului indică intensitatea Money Flow-ului
-        color='flow_delta', # Culoarea punctului indică direcția Flow-ului
+        size='flow_magnitude', # <--- AICI S-A FĂCUT CORECȚIA
+        color='flow_delta',    # Culoarea ramane flow_delta pentru a arata directia
+        color_continuous_scale=px.colors.diverging.RdYlGn, # Schema de culori
         hover_data=['odds', 'line', 'flow_delta'],
         title=f"Evoluția Liniei vs. Money Flow (Intensitatea Smart Money) - {market_type}",
-        labels={'timestamp': 'Timp', 'plot_value': y_axis_label, 'flow_delta': 'Money Flow (%)'}
+        labels={'timestamp': 'Timp', 'plot_value': y_axis_label, 'flow_delta': 'Money Flow (%)', 'flow_magnitude': 'Intensitate Flow'}
     )
 
     fig.update_traces(mode='lines+markers', line_shape='spline')
     fig.update_layout(xaxis_title="Timp (Evoluție)", yaxis_title=y_axis_label)
 
-    # Adăugăm o linie orizontală pentru linia de deschidere (Open Line)
     open_line = filtered_df.iloc[0]['plot_value']
     fig.add_hline(y=open_line, line_dash="dot", annotation_text="Linie Deschidere (Open)", annotation_position="bottom right")
 
@@ -201,7 +200,7 @@ def create_analysis_chart(df, market_type, team=None):
 
 # --- Funcția Principală de Afișare UI ---
 def main():
-    FILE_NAME = "Clippers_vs_Magic_COMPLETE_20251120_1732.csv"
+    FILE_NAME = "Clippers_vs_Magic_COMPLETE_20251120_1820.csv"
     
     st.markdown(f"## 📊 PRO BETTING ANALYTICS {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     st.markdown("---")
@@ -217,7 +216,6 @@ def main():
         # --- 1. Tablou de Bord (Tabelul de Recomandări) ---
         st.header("✨ Tabloul de Bord Decizional")
         
-        # Stilizarea tabelului cu culori bazate pe Risc (Scor)
         def color_risk(val):
             color = COLOR_MAP.get(val, 'black')
             return f'background-color: {color}; color: black; font-weight: bold' if val != 'SCĂZUT' else f'color: {COLOR_MAP["SCAZUT"]}; font-weight: bold'
@@ -243,27 +241,24 @@ def main():
         market_options = ['Spread', 'Total', 'Moneyline']
         selected_market = st.selectbox("Selectează Piața pentru Grafic:", market_options)
 
+        fig = None
         if selected_market == 'Spread' or selected_market == 'Moneyline':
-            # Dacă e Spread/ML, trebuie să știm pe cine
             team_options = [teams['home'], teams['away']]
             selected_team = st.selectbox(f"Selectează Echipa pentru {selected_market}:", team_options)
             fig = create_analysis_chart(data, selected_market, selected_team)
         elif selected_market == 'Total':
-            # Totalul e comun
             fig = create_analysis_chart(data, 'Total')
         
         if fig:
             st.plotly_chart(fig, use_container_width=True)
             
-            # Explicația Mecanismului
-            if selected_market != 'Moneyline':
-                st.subheader("Cum Citim Graficul (RLM & Smart Money)")
-                st.markdown("""
-                    * **Mărimea & Culoarea Punctului:** Reprezintă intensitatea **Money Flow**-ului. Punctele mai mari arată unde s-au pariat cei mai mulți bani (probabilistic).
-                    * **Linia Rosie (Open):** Linia de start stabilită de bookmaker.
-                    * **Semnalul RLM (Reverse Line Movement):** Apare când linia se mișcă **împotriva** a ceea ce pariază publicul (care este de obicei pe linia de deschidere), dar banii (punctele mari) susțin cealaltă parte. Aceasta indică **Smart Money**.
-                    * **Steam Movement:** Linia și Punctele (Banii) se mișcă în aceeași direcție (parere populară + suport profesional).
-                """)
+            st.subheader("Cum Citim Graficul (RLM & Smart Money)")
+            st.markdown("""
+                * **Mărimea Punctului:** Reprezintă intensitatea **Money Flow**-ului (volumul de bani plasați). Punctele mai mari arată unde s-au pariat cei mai mulți bani.
+                * **Culoarea Punctului:** Indică direcția Money Flow-ului. Verde/Galben (Flow Pozitiv) și Roșu (Flow Negativ).
+                * **Linia Rosie Punctată (Open):** Linia de start stabilită de bookmaker.
+                * **Semnalul RLM (Reverse Line Movement):** Apare când linia se mișcă **împotriva** a ceea ce pariază publicul (iar punctele sunt mari și au o culoare clară). Aceasta indică **Smart Money**.
+            """)
 
     except Exception as e:
         st.error(f"A apărut o eroare la procesarea datelor: {e}")
