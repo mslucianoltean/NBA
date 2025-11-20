@@ -201,7 +201,7 @@ def create_analysis_chart(df, market_type, team=None):
 
 # --- Funcția Principală de Afișare UI ---
 def main():
-    FILE_NAME = "Clippers_vs_Magic_COMPLETE_20251120_1820.csv"
+    FILE_NAME = "Clippers_vs_Magic_COMPLETE_20251120_1732.csv"
     
     st.markdown(f"## 📊 PRO BETTING ANALYTICS {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     st.markdown("---")
